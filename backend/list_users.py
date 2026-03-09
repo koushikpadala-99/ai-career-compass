@@ -47,7 +47,7 @@ def list_users():
             print(f"  • {user.username}")
             print(f"    Email: {user.email}")
             print(f"    Status: {status}")
-            print(f"    Created: {user.created_at.strftime('%Y-%m-%d %H:%M')}")
+            print(f"    Created: {user.date_joined.strftime('%Y-%m-%d %H:%M')}")
             print()
     
     if regular_users.exists():
@@ -55,10 +55,10 @@ def list_users():
         print("-" * 80)
         for user in regular_users:
             status = "✅ Active" if user.is_active else "❌ Inactive"
-            print(f"  • {user.name}")
+            print(f"  • {user.username}")
             print(f"    Email: {user.email}")
             print(f"    Status: {status}")
-            print(f"    Created: {user.created_at.strftime('%Y-%m-%d %H:%M')}")
+            print(f"    Created: {user.date_joined.strftime('%Y-%m-%d %H:%M')}")
             print()
     
     print("=" * 80)

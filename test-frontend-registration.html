@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Frontend Registration</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; }
+        button {
+            background: #4CAF50;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 5px;
+            font-size: 16px;
+        }
+        button:hover { background: #45a049; }
+        .error { color: #f44336; padding: 10px; background: #ffebee; border-radius: 5px; margin: 10px 0; }
+        .success { color: #4CAF50; padding: 10px; background: #e8f5e9; border-radius: 5px; margin: 10px 0; }
+        .info { color: #2196F3; padding: 10px; background: #e3f2fd; border-radius: 5px; margin: 10px 0; }
+        pre {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            max-height: 400px;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+        .step {
+            margin: 20px 0;
+            padding: 20px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+        }
+        .step h2 {
+            margin-top: 0;
+            color: #2196F3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Frontend Registration Debugger</h1>
+        <p class="info">This tool helps debug why users aren't appearing in Django admin</p>
+
+        <!-- Step 1: Check Environment -->
+        <div class="step">
+            <h2>Step 1: Check Environment Variables</h2>
+            <button onclick="checkEnv()">Check Environment</button>
+            <div id="env-result"></div>
+        </div>
+
+        <!-- Step 2: Test Backend Connection -->
+        <div class="step">
+            <h2>Step 2: Test Backend Connection</h2>
+            <button onclick="testBackend()">Test Backend</button>
+            <div id="backend-result"></div>
+        </div>
+
+        <!-- Step 3: Test Registration -->
+        <div class="step">
+            <h2>Step 3: Test Registration</h2>
+            <input type="text" id="test-name" placeholder="Name" value="Frontend Test User">
+            <input type="email" id="test-email" placeholder="Email" value="frontendtest@example.com">
+            <input type="password" id="test-password" placeholder="Password" value="test123456">
+            <button onclick="testRegistration()">Test Registration</button>
+            <div id="registration-result"></div>
+        </div>
+
+        <!-- Step 4: Check localStorage -->
+        <div class="step">
+            <h2>Step 4: Check localStorage</h2>
+            <button onclick="checkStorage()">Check Storage</button>
+            <button onclick="clearStorage()">Clear Storage</button>
+            <div id="storage-result"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000/api';
+
+        function log(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            const className = type === 'error' ? 'error' : type === 'success' ? 'success' : 'info';
+            element.innerHTML = `<div class="${className}">${message}</div>`;
+        }
+
+        function logJson(elementId, data, type = 'success') {
+            const element = document.getElementById(elementId);
+            const className = type === 'error' ? 'error' : 'success';
+            element.innerHTML = `<div class="${className}">Response:</div><pre>${JSON.stringify(data, null, 2)}</pre>`;
+        }
+
+        function checkEnv() {
+            log('env-result', '⏳ Checking environment variables...');
+            
+            // Simulate checking environment (in real app, these would be from import.meta.env)
+            const envVars = {
+                'VITE_API_URL': 'http://localhost:8000/api',
+                'VITE_USE_BACKEND': 'true',
+                'VITE_GEMINI_API_KEY': '(hidden for security)',
+                'Note': 'These should match your .env file'
+            };
+
+            logJson('env-result', envVars, 'info');
+        }
+
+        async function testBackend() {
+            log('backend-result', '⏳ Testing backend connection...');
+            
+            try {
+                const response = await fetch(`${API_URL}/auth/register/`, {
+                    method: 'OPTIONS'
+                });
+                
+                if (response.ok) {
+                    log('backend-result', '✅ Backend is reachable! Server is running on port 8000.', 'success');
+                } else {
+                    log('backend-result', `❌ Backend returned status: ${response.status}`, 'error');
+                }
+            } catch (error) {
+                log('backend-result', `❌ Cannot reach backend: ${error.message}<br><br>Make sure backend is running: <code>cd backend && python manage.py runserver</code>`, 'error');
+            }
+        }
+
+        async function testRegistration() {
+            const name = document.getElementById('test-name').value;
+            const email = document.getElementById('test-email').value;
+            const password = document.getElementById('test-password').value;
+
+            log('registration-result', '⏳ Testing registration...');
+
+            try {
+                // Test backend registration
+                const response = await fetch(`${API_URL}/auth/register/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: email,
+                        password: password,
+                        username: name || email.split('@')[0]
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    log('registration-result', 
+                        `✅ SUCCESS! User registered in backend!<br><br>` +
+                        `<strong>User ID:</strong> ${data.user.id}<br>` +
+                        `<strong>Email:</strong> ${data.user.email}<br>` +
+                        `<strong>Username:</strong> ${data.user.username}<br><br>` +
+                        `✅ This user should now appear in Django admin!<br>` +
+                        `Go to: <a href="http://localhost:8000/admin/users/user/" target="_blank">http://localhost:8000/admin/users/user/</a>`, 
+                        'success'
+                    );
+                    
+                    // Store tokens
+                    localStorage.setItem('tokens', JSON.stringify(data.tokens));
+                    localStorage.setItem('current_user', JSON.stringify({
+                        name: data.user.username,
+                        email: data.user.email,
+                        joinDate: data.user.join_date
+                    }));
+                } else {
+                    log('registration-result', 
+                        `❌ Registration failed!<br><br>` +
+                        `<strong>Error:</strong> ${JSON.stringify(data)}<br><br>` +
+                        `This means the frontend is NOT saving to backend.`, 
+                        'error'
+                    );
+                }
+            } catch (error) {
+                log('registration-result', 
+                    `❌ Network error: ${error.message}<br><br>` +
+                    `<strong>This is the problem!</strong><br>` +
+                    `The frontend cannot reach the backend, so it's falling back to localStorage only.<br><br>` +
+                    `<strong>Solution:</strong><br>` +
+                    `1. Make sure backend is running: <code>cd backend && python manage.py runserver</code><br>` +
+                    `2. Check VITE_USE_BACKEND=true in ai-career-compass/.env<br>` +
+                    `3. Restart frontend dev server`, 
+                    'error'
+                );
+            }
+        }
+
+        function checkStorage() {
+            const tokens = localStorage.getItem('tokens');
+            const user = localStorage.getItem('current_user');
+            const registeredUsers = localStorage.getItem('registered_users');
+            
+            const result = {
+                'tokens': tokens ? JSON.parse(tokens) : 'Not found',
+                'current_user': user ? JSON.parse(user) : 'Not found',
+                'registered_users': registeredUsers ? JSON.parse(registeredUsers) : 'Not found',
+                'Note': 'If registered_users exists, authentication is using localStorage only (not backend)'
+            };
+
+            logJson('storage-result', result, 'info');
+        }
+
+        function clearStorage() {
+            localStorage.removeItem('tokens');
+            localStorage.removeItem('current_user');
+            localStorage.removeItem('registered_users');
+            log('storage-result', '✅ localStorage cleared!', 'success');
+        }
+
+        // Auto-check on load
+        window.onload = () => {
+            checkEnv();
+            testBackend();
+        };
+    </script>
+</body>
+</html>
