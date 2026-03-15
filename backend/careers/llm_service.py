@@ -2,195 +2,96 @@ import json
 from django.conf import settings
 from typing import Dict, List, Any
 
-
 class LLMService:
-    """Service for LLM-powered career analysis and document tools"""
-
+    """Service for LLM-powered career analysis"""
+    
     def __init__(self):
-        self.provider = getattr(settings, 'LLM_PROVIDER', 'gemini')
-        self.client = None
-        self._init_client()
-
-    def _init_client(self):
-        try:
-            if self.provider == 'gemini':
-                from google import genai
-                self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
-            elif self.provider == 'openai':
-                from openai import OpenAI
-                self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
-            elif self.provider == 'anthropic':
-                import anthropic
-                self.client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
-        except Exception as e:
-            print(f"LLM init error: {e}")
-
-    # ─── Internal call helpers ────────────────────────────────────────────────
-
-    def _call(self, prompt: str, temperature: float = 0.5) -> str:
-        if self.provider == 'gemini':
-            response = self.client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=prompt
-            )
-            return response.text
-        elif self.provider == 'openai':
-            response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are a helpful AI assistant."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=temperature,
-                max_tokens=2000
-            )
-            return response.choices[0].message.content
+        self.provider = settings.LLM_PROVIDER
+        
+        if self.provider == 'openai':
+            import openai
+            openai.api_key = settings.OPENAI_API_KEY
+            self.client = openai
         elif self.provider == 'anthropic':
-            message = self.client.messages.create(
-                model="claude-3-sonnet-20240229",
-                max_tokens=2000,
-                messages=[{"role": "user", "content": prompt}]
-            )
-            return message.content[0].text
-        raise ValueError(f"Unknown provider: {self.provider}")
-
-    def _parse_json(self, text: str) -> Any:
-        """Extract and parse JSON from LLM response"""
-        try:
-            # Try direct parse first
-            return json.loads(text)
-        except Exception:
-            pass
-        try:
-            # Strip markdown code fences
-            start = text.find('{') if '{' in text else text.find('[')
-            end = (text.rfind('}') + 1) if '{' in text else (text.rfind(']') + 1)
-            return json.loads(text[start:end])
-        except Exception:
-            return None
-
-    # ─── Career analysis ──────────────────────────────────────────────────────
-
+            import anthropic
+            self.client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        elif self.provider == 'gemini':
+            import google.generativeai as genai
+            genai.configure(api_key=settings.GEMINI_API_KEY)
+            self.client = genai
+        else:
+            self.client = None
+    
     def analyze_career_interests(self, user_text: str, quiz_data: Dict = None) -> Dict[str, Any]:
+        """
+        Use LLM to analyze user interests and provide career recommendations
+        """
         prompt = self._build_analysis_prompt(user_text, quiz_data)
+        
         try:
-            response = self._call(prompt)
-            result = self._parse_json(response)
-            if result:
-                return result
+            if self.provider == 'openai':
+                response = self._call_openai(prompt)
+            elif self.provider == 'anthropic':
+                response = self._call_anthropic(prompt)
+            elif self.provider == 'gemini':
+                response = self._call_gemini(prompt)
+            else:
+                return self._fallback_analysis(user_text)
+            
+            return self._parse_llm_response(response)
         except Exception as e:
-            print(f"LLM analyze error: {e}")
-        return self._fallback_analysis(user_text)
-
+            print(f"LLM Error: {e}")
+            return self._fallback_analysis(user_text)
+    
     def generate_roadmap(self, career_title: str, user_level: str = "beginner") -> List[Dict]:
+        """
+        Generate personalized learning roadmap using LLM
+        """
         prompt = f"""Generate a detailed learning roadmap for becoming a {career_title}.
-User level: {user_level}
-
-Create 4 milestones with 4 tasks each. Return ONLY valid JSON array:
-[
-  {{
-    "id": "m1",
-    "title": "Milestone title",
-    "description": "Description",
-    "tasks": [
-      {{"id": "t1", "title": "Task", "xp": 50, "time": "1 hour", "priority": "high", "completed": false}}
-    ]
-  }}
-]"""
-        try:
-            response = self._call(prompt, temperature=0.7)
-            result = self._parse_json(response)
-            if result:
-                return result
-        except Exception as e:
-            print(f"LLM roadmap error: {e}")
-        return self._fallback_roadmap(career_title)
-
-    # ─── Document tools ───────────────────────────────────────────────────────
-
-    def summarize_document(self, text: str, mode: str = 'summary') -> Dict[str, Any]:
+        User level: {user_level}
+        
+        Create 4 milestones with 4 tasks each. Format as JSON:
+        [
+          {{
+            "id": "m1",
+            "title": "Milestone title",
+            "description": "Description",
+            "tasks": [
+              {{"id": "t1", "title": "Task", "xp": 50, "time": "1 hour", "priority": "high"}}
+            ]
+          }}
+        ]
         """
-        Summarize document text.
-        mode: 'summary' | 'keyTerms' | 'studyGuide'
-        """
-        mode_instructions = {
-            'summary': "Summarize this document for a student exploring career paths. Focus on key insights relevant to professional development.",
-            'keyTerms': "Extract and explain the most important technical and domain-specific terms from this document.",
-            'studyGuide': "Create a structured study guide from this document with chapters, key concepts, and review questions.",
-        }
-
-        instruction = mode_instructions.get(mode, mode_instructions['summary'])
-
-        prompt = f"""{instruction}
-
-Document content:
-\"\"\"
-{text[:6000]}
-\"\"\"
-
-Return ONLY valid JSON in this exact format:
-{{
-  "title": "A descriptive title for the result",
-  "points": ["point 1", "point 2", "point 3", "point 4", "point 5"],
-  "terms": ["term1", "term2", "term3", "term4", "term5", "term6"],
-  "actions": ["action 1", "action 2", "action 3"]
-}}"""
-
+        
         try:
-            response = self._call(prompt)
-            result = self._parse_json(response)
-            if result and 'points' in result:
-                return result
-        except Exception as e:
-            print(f"LLM summarize error: {e}")
+            if self.provider == 'openai':
+                response = self._call_openai(prompt, temperature=0.7)
+            else:
+                response = self._call_anthropic(prompt, temperature=0.7)
+            
+            return json.loads(response)
+        except:
+            return self._fallback_roadmap(career_title)
 
-        return self._fallback_summary(mode)
-
-    def ask_document(self, text: str, question: str, history: List[Dict] = None) -> str:
-        """Answer a question about a document"""
-        history_text = ""
-        if history:
-            for msg in history[-4:]:  # last 4 messages for context
-                role = "User" if msg['role'] == 'user' else "Assistant"
-                history_text += f"{role}: {msg['text']}\n"
-
-        prompt = f"""You are a helpful study assistant. Answer the user's question based on the document below.
-Be concise, clear, and helpful. If the answer isn't in the document, say so.
-
-Document:
-\"\"\"
-{text[:5000]}
-\"\"\"
-
-{f'Conversation so far:{chr(10)}{history_text}' if history_text else ''}
-User question: {question}
-
-Answer:"""
-
-        try:
-            return self._call(prompt, temperature=0.7)
-        except Exception as e:
-            print(f"LLM ask error: {e}")
-            return "Sorry, I couldn't process your question. Please try again."
-
-    # ─── Prompt builders ──────────────────────────────────────────────────────
-
+    
     def _build_analysis_prompt(self, user_text: str, quiz_data: Dict = None) -> str:
+        """Build prompt for career analysis"""
         prompt = f"""Analyze this person's career interests and recommend suitable careers:
 
 User Input: "{user_text}"
 """
         if quiz_data:
             prompt += f"\nQuiz Answers: {json.dumps(quiz_data)}"
-
+        
         prompt += """
 
-Return ONLY valid JSON:
+Provide analysis in JSON format:
 {
   "keywords_detected": ["keyword1", "keyword2"],
   "personality_traits": ["trait1", "trait2"],
   "top_career_categories": [
-    {"name": "Technology", "percentage": 40}
+    {"name": "Technology", "percentage": 40},
+    {"name": "Healthcare", "percentage": 30}
   ],
   "recommended_careers": [
     {
@@ -199,36 +100,330 @@ Return ONLY valid JSON:
       "reason": "Strong interest in coding and problem-solving"
     }
   ]
-}"""
+}
+"""
         return prompt
-
-    # ─── Fallbacks ────────────────────────────────────────────────────────────
-
+    
+    def _call_openai(self, prompt: str, temperature: float = 0.5) -> str:
+        """Call OpenAI API"""
+        response = self.client.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a career counselor AI."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=temperature,
+            max_tokens=1500
+        )
+        return response.choices[0].message.content
+    
+    def _call_anthropic(self, prompt: str, temperature: float = 0.5) -> str:
+        """Call Anthropic Claude API"""
+        message = self.client.messages.create(
+            model="claude-3-sonnet-20240229",
+            max_tokens=1500,
+            temperature=temperature,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return message.content[0].text
+    
+    def _call_gemini(self, prompt: str, temperature: float = 0.5) -> str:
+        """Call Google Gemini API"""
+        model = self.client.GenerativeModel('gemini-2.5-flash')
+        response = model.generate_content(
+            prompt,
+            generation_config=self.client.types.GenerationConfig(
+                temperature=temperature,
+                max_output_tokens=1500
+            )
+        )
+        return response.text
+    
+    def _parse_llm_response(self, response: str) -> Dict[str, Any]:
+        """Parse LLM JSON response"""
+        try:
+            # Extract JSON from response
+            start = response.find('{')
+            end = response.rfind('}') + 1
+            json_str = response[start:end]
+            return json.loads(json_str)
+        except:
+            return self._fallback_analysis("")
+    
     def _fallback_analysis(self, user_text: str) -> Dict[str, Any]:
+        """Fallback analysis when LLM fails"""
         return {
             "keywords_detected": [],
             "personality_traits": ["Curious Explorer"],
             "top_career_categories": [{"name": "General", "percentage": 100}],
             "recommended_careers": []
         }
-
+    
     def _fallback_roadmap(self, career_title: str) -> List[Dict]:
+        """Fallback roadmap when LLM fails"""
         return [
             {
                 "id": "m1",
                 "title": f"{career_title} Foundations",
                 "description": f"Build core knowledge in {career_title.lower()}",
                 "tasks": [
-                    {"id": "t1", "title": f"Research {career_title}", "xp": 50, "time": "1 hour", "priority": "high", "completed": False},
-                    {"id": "t2", "title": "Learn fundamentals", "xp": 75, "time": "2 hours", "priority": "high", "completed": False},
+                    {"id": "t1", "title": f"Research {career_title}", "xp": 50, "time": "1 hour", "priority": "high"},
+                    {"id": "t2", "title": "Learn fundamentals", "xp": 75, "time": "2 hours", "priority": "high"},
                 ]
             }
         ]
 
-    def _fallback_summary(self, mode: str) -> Dict[str, Any]:
+    def generate_study_plan(self, career: str, skill_level: str = "beginner") -> Dict[str, Any]:
+        """
+        Generate AI-powered study plan for a career
+        """
+        prompt = f"""Generate a comprehensive study plan for someone pursuing a career as a {career}.
+
+Skill Level: {skill_level}
+
+Generate a JSON response with this EXACT structure:
+{{
+  "career": "{career}",
+  "skill_level": "{skill_level}",
+  "study_plan": [
+    {{
+      "topic": "Topic Name",
+      "description": "Clear explanation of what to learn and why it's important",
+      "youtube_link": "https://www.youtube.com/results?search_query=topic+keywords",
+      "estimated_hours": 20,
+      "difficulty": "beginner",
+      "prerequisites": ["prerequisite1", "prerequisite2"]
+    }}
+  ],
+  "total_estimated_hours": 200
+}}
+
+Requirements:
+1. Generate 8-12 topics in logical learning order
+2. Start with fundamentals, progress to advanced
+3. Each description should be 2-3 sentences
+4. YouTube links must be actual search URLs with relevant keywords
+5. Estimate realistic hours for each topic
+6. Mark difficulty as beginner/intermediate/advanced
+7. List prerequisites for each topic
+8. Total hours should be realistic for the career path
+
+Return ONLY the JSON object, no markdown formatting or additional text."""
+        
+        try:
+            if self.provider == 'openai':
+                response = self._call_openai(prompt, temperature=0.7)
+            elif self.provider == 'anthropic':
+                response = self._call_anthropic(prompt, temperature=0.7)
+            elif self.provider == 'gemini':
+                response = self._call_gemini(prompt, temperature=0.7)
+            else:
+                return self._fallback_study_plan(career, skill_level)
+            
+            return self._parse_study_plan_response(response)
+        except Exception as e:
+            print(f"Study plan generation error: {e}")
+            return self._fallback_study_plan(career, skill_level)
+    
+    def _parse_study_plan_response(self, response: str) -> Dict[str, Any]:
+        """Parse study plan JSON response"""
+        try:
+            # Extract JSON from response
+            start = response.find('{')
+            end = response.rfind('}') + 1
+            json_str = response[start:end]
+            return json.loads(json_str)
+        except:
+            return {"study_plan": [], "total_estimated_hours": 0}
+    
+    def _fallback_study_plan(self, career: str, skill_level: str) -> Dict[str, Any]:
+        """Fallback study plan when LLM fails"""
         return {
-            "title": "Analysis Complete",
-            "points": ["Document processed successfully", "Key content identified", "Review the document for more details"],
-            "terms": ["Document", "Analysis", "Content"],
-            "actions": ["Review the document", "Take notes", "Practice key concepts"]
+            "career": career,
+            "skill_level": skill_level,
+            "study_plan": [
+                {
+                    "topic": f"Introduction to {career}",
+                    "description": f"Learn the basics and fundamentals of {career}.",
+                    "youtube_link": f"https://www.youtube.com/results?search_query={career.replace(' ', '+')}+basics",
+                    "estimated_hours": 10,
+                    "difficulty": "beginner",
+                    "prerequisites": []
+                }
+            ],
+            "total_estimated_hours": 10
         }
+
+    def summarize_document(self, text: str, mode: str = 'summary') -> Dict[str, Any]:
+        """
+        Summarize a document using LLM
+        Modes: 'summary', 'keyTerms', 'studyGuide'
+        """
+        # Limit text to avoid token limits
+        doc_text = text[:3000] if len(text) > 3000 else text
+        
+        if mode == 'summary':
+            prompt = f"""Summarize this document in 8-10 key points:
+
+{doc_text}
+
+Return ONLY this JSON (no markdown, no extra text):
+{{"title": "Summary", "points": ["point1", "point2", "point3"], "terms": [], "actions": []}}"""
+        elif mode == 'keyTerms':
+            prompt = f"""Extract 5-8 key terms and concepts from this document:
+
+{doc_text}
+
+Return ONLY this JSON (no markdown, no extra text):
+{{"title": "Key Terms", "points": [], "terms": ["term1", "term2", "term3"], "actions": []}}"""
+        else:  # studyGuide
+            prompt = f"""Create a study guide from this document with key points and action items:
+
+{doc_text}
+
+Return ONLY this JSON (no markdown, no extra text):
+{{"title": "Study Guide", "points": ["point1", "point2"], "terms": ["term1"], "actions": ["action1", "action2"]}}"""
+        
+        try:
+            if self.provider == 'openai':
+                response = self._call_openai(prompt, temperature=0.5)
+            elif self.provider == 'anthropic':
+                response = self._call_anthropic(prompt, temperature=0.5)
+            elif self.provider == 'gemini':
+                response = self._call_gemini(prompt, temperature=0.5)
+            else:
+                raise Exception("No LLM provider configured")
+            
+            # Parse JSON response - more robust extraction
+            response = response.strip()
+            start = response.find('{')
+            end = response.rfind('}') + 1
+            
+            if start == -1 or end == 0:
+                raise ValueError("No JSON found in response")
+            
+            json_str = response[start:end]
+            result = json.loads(json_str)
+            
+            # Ensure all required fields exist
+            return {
+                "title": result.get("title", "Summary"),
+                "points": result.get("points", []),
+                "terms": result.get("terms", []),
+                "actions": result.get("actions", [])
+            }
+        except Exception as e:
+            print(f"Document summarization error: {e}")
+            print(f"Response was: {response if 'response' in locals() else 'No response'}")
+            return {
+                "title": "Summary",
+                "points": ["Unable to summarize document. Please try again."],
+                "terms": [],
+                "actions": []
+            }
+    
+    def ask_document(self, text: str, question: str, history: List[Dict] = None) -> str:
+        """
+        Answer a question about a document
+        """
+        if history is None:
+            history = []
+        
+        # Build context from history (last 2 messages for brevity)
+        context = ""
+        for msg in history[-2:]:
+            role = "User" if msg.get('role') == 'user' else "Assistant"
+            context += f"{role}: {msg.get('text', '')}\n"
+        
+        # Limit document text to avoid token limits
+        doc_excerpt = text[:4000] if len(text) > 4000 else text
+        
+        prompt = f"""You are a helpful assistant answering questions about a document.
+
+DOCUMENT CONTENT:
+{doc_excerpt}
+
+CONVERSATION HISTORY:
+{context if context else "No previous messages"}
+
+USER QUESTION: {question}
+
+Provide a clear, concise answer based on the document content. If the answer is not in the document, say so."""
+        
+        try:
+            if self.provider == 'openai':
+                response = self._call_openai(prompt, temperature=0.7)
+            elif self.provider == 'anthropic':
+                response = self._call_anthropic(prompt, temperature=0.7)
+            elif self.provider == 'gemini':
+                response = self._call_gemini(prompt, temperature=0.7)
+            else:
+                raise Exception("No LLM provider configured")
+            
+            return response.strip()
+        except Exception as e:
+            print(f"Document Q&A error: {e}")
+            return "I couldn't answer that question about the document. Please try again."
+
+    def match_careers_from_quiz(self, quiz_answers: Dict[str, str]) -> Dict[str, Any]:
+        """
+        Match careers based on quiz answers using LLM
+        """
+        answers_text = "\n".join([f"Q: {q}\nA: {a}" for q, a in quiz_answers.items()])
+        
+        prompt = f"""Analyze these quiz answers and recommend the top 5 career matches:
+
+{answers_text}
+
+Return ONLY this JSON format, no other text:
+{{
+  "careers": [
+    {{"career": "Career Name", "matchPercentage": 95, "reason": "Why this matches", "skills": ["skill1", "skill2"], "interests": ["interest1", "interest2"]}},
+    {{"career": "Career Name 2", "matchPercentage": 85, "reason": "Why this matches", "skills": ["skill1", "skill2"], "interests": ["interest1", "interest2"]}},
+    {{"career": "Career Name 3", "matchPercentage": 75, "reason": "Why this matches", "skills": ["skill1", "skill2"], "interests": ["interest1", "interest2"]}},
+    {{"career": "Career Name 4", "matchPercentage": 65, "reason": "Why this matches", "skills": ["skill1", "skill2"], "interests": ["interest1", "interest2"]}},
+    {{"career": "Career Name 5", "matchPercentage": 55, "reason": "Why this matches", "skills": ["skill1", "skill2"], "interests": ["interest1", "interest2"]}}
+  ],
+  "summary": "Overall career analysis summary"
+}}
+
+Requirements:
+- matchPercentage must be a number between 0-100
+- Keep reasons short (1-2 sentences)
+- Include 2-3 relevant skills for each career
+- Include 2-3 interests for each career
+- Return exactly 5 careers"""
+        
+        try:
+            if self.provider == 'openai':
+                response = self._call_openai(prompt, temperature=0.7)
+            elif self.provider == 'anthropic':
+                response = self._call_anthropic(prompt, temperature=0.7)
+            elif self.provider == 'gemini':
+                response = self._call_gemini(prompt, temperature=0.7)
+            else:
+                raise Exception("No LLM provider configured")
+            
+            # Parse JSON response
+            response = response.strip()
+            start = response.find('{')
+            end = response.rfind('}') + 1
+            
+            if start == -1 or end == 0:
+                raise ValueError("No JSON found in response")
+            
+            json_str = response[start:end]
+            result = json.loads(json_str)
+            
+            return {
+                "success": True,
+                "careers": result.get("careers", []),
+                "summary": result.get("summary", "")
+            }
+        except Exception as e:
+            print(f"Career matching error: {e}")
+            return {
+                "success": False,
+                "careers": [],
+                "error": str(e)
+            }

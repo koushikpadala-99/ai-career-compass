@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { User, Mail, Phone, MapPin, Calendar, Target, Edit2, Download, Award, FileText, Briefcase, GraduationCap, Star, Trophy, Zap, CheckCircle, Clock, TrendingUp } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Calendar, Target, Edit2, Download, Award, FileText, Briefcase, GraduationCap, Trophy, Zap, CheckCircle, Clock, TrendingUp } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserData } from '@/contexts/UserDataContext';
@@ -19,10 +19,9 @@ const Profile = () => {
   if (!user) return null;
 
   const skills = selectedCareer?.skills || ['Critical Thinking', 'Communication', 'Problem Solving', 'Research', 'Teamwork'];
-  const skillProgress = skills.map((s, i) => ({
-    name: s,
-    percentage: Math.min(100, Math.round((tasksCompleted / (i + 2)) * 25)),
-  }));
+  
+  // Debug: Log the actual values
+  console.log('Profile Debug:', { tasksCompleted, points, level, studyHours });
 
   const profileCompletion = Math.min(100, Math.round(
     ((user.name ? 20 : 0) + 
@@ -30,6 +29,18 @@ const Profile = () => {
      (selectedCareer ? 30 : 0) + 
      (tasksCompleted > 0 ? 30 : 0))
   ));
+
+  const resetProfileData = () => {
+    if (confirm('Are you sure you want to reset all profile data? This will clear all tasks, points, and study hours.')) {
+      localStorage.removeItem('tasksCompleted');
+      localStorage.removeItem('points');
+      localStorage.removeItem('studyHours');
+      localStorage.removeItem('streak');
+      localStorage.removeItem('roadmap');
+      localStorage.removeItem('badges');
+      window.location.reload();
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -49,12 +60,21 @@ const Profile = () => {
                 <div className="h-20 w-20 rounded-full gradient-bg-primary flex items-center justify-center text-primary-foreground text-3xl font-bold">
                   {user.name[0]}
                 </div>
-                <button 
-                  onClick={() => setEditMode(!editMode)}
-                  className="p-2 rounded-lg hover:bg-secondary transition-colors"
-                >
-                  <Edit2 className="h-4 w-4 text-muted-foreground" />
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setEditMode(!editMode)}
+                    className="p-2 rounded-lg hover:bg-secondary transition-colors"
+                  >
+                    <Edit2 className="h-4 w-4 text-muted-foreground" />
+                  </button>
+                  <button 
+                    onClick={resetProfileData}
+                    className="p-2 rounded-lg hover:bg-secondary transition-colors text-xs text-muted-foreground hover:text-destructive"
+                    title="Reset all profile data"
+                  >
+                    ↻
+                  </button>
+                </div>
               </div>
 
               <h1 className="text-xl font-bold mb-1">{user.name}</h1>
@@ -228,7 +248,7 @@ const Profile = () => {
               </div>
             </motion.div>
 
-            {/* Skills */}
+            {/* Progress Milestones */}
             <motion.div 
               className="glass-card rounded-xl p-6"
               initial={{ opacity: 0, y: 20 }}
@@ -237,29 +257,90 @@ const Profile = () => {
             >
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
-                  <Star className="h-5 w-5 text-primary" />
-                  <h2 className="font-bold text-lg">Skills Development</h2>
+                  <TrendingUp className="h-5 w-5 text-primary" />
+                  <h2 className="font-bold text-lg">Your Progress</h2>
                 </div>
-                <button className="text-sm text-primary hover:underline">View All</button>
               </div>
 
               <div className="space-y-4">
-                {skillProgress.slice(0, 5).map(({ name, percentage }) => (
-                  <div key={name}>
-                    <div className="flex justify-between text-sm mb-2">
-                      <span className="font-medium">{name}</span>
-                      <span className="text-muted-foreground">{percentage}%</span>
+                {/* XP Progress */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-accent" />
+                      <span className="text-sm font-medium">Experience Points</span>
                     </div>
-                    <div className="h-2 rounded-full bg-secondary overflow-hidden">
-                      <motion.div 
-                        className="h-full gradient-bg-primary"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${percentage}%` }}
-                        transition={{ duration: 1, ease: "easeOut" }}
+                    <span className="text-sm font-bold text-accent">{points} XP</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-secondary overflow-hidden">
+                    <motion.div 
+                      className="h-full bg-gradient-to-r from-accent to-accent/60"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.min(100, (points % 200) / 2)}%` }}
+                      transition={{ duration: 0.8, ease: "easeOut" }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">{200 - (points % 200)} XP to next level</p>
+                </div>
+
+                {/* Tasks Completed */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-medium">Tasks Completed</span>
+                    </div>
+                    <span className="text-sm font-bold text-primary">{tasksCompleted}</span>
+                  </div>
+                  <div className="flex gap-1">
+                    {[...Array(Math.min(10, Math.max(5, tasksCompleted + 2)))].map((_, i) => (
+                      <motion.div
+                        key={i}
+                        className={`flex-1 h-2 rounded-full ${
+                          i < tasksCompleted ? 'bg-primary' : 'bg-secondary'
+                        }`}
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        transition={{ delay: i * 0.05 }}
                       />
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Keep going! Complete more tasks to unlock achievements</p>
+                </div>
+
+                {/* Study Hours */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-blue-500" />
+                      <span className="text-sm font-medium">Study Hours</span>
+                    </div>
+                    <span className="text-sm font-bold text-blue-500">{Math.round(studyHours * 10) / 10}h</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-secondary overflow-hidden">
+                    <motion.div 
+                      className="h-full bg-gradient-to-r from-blue-500 to-blue-400"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${Math.min(100, (studyHours / 50) * 100)}%` }}
+                      transition={{ duration: 0.8, ease: "easeOut" }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">{Math.max(0, 50 - studyHours).toFixed(1)}h to 50-hour milestone</p>
+                </div>
+
+                {/* Level Progress */}
+                <div className="pt-2 border-t border-border">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Trophy className="h-4 w-4 text-yellow-500" />
+                      <span className="text-sm font-medium">Current Level</span>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-yellow-500">{level}</div>
+                      <p className="text-xs text-muted-foreground">Master</p>
                     </div>
                   </div>
-                ))}
+                </div>
               </div>
             </motion.div>
 

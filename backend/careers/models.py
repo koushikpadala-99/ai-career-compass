@@ -50,3 +50,24 @@ class Roadmap(models.Model):
     
     class Meta:
         ordering = ['-updated_at']
+
+class StudyPlan(models.Model):
+    SKILL_LEVELS = [
+        ('beginner', 'Beginner'),
+        ('intermediate', 'Intermediate'),
+        ('advanced', 'Advanced'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='study_plans')
+    career = models.CharField(max_length=200)
+    skill_level = models.CharField(max_length=20, choices=SKILL_LEVELS)
+    study_plan = models.JSONField()  # Array of topics with descriptions, youtube links, etc.
+    total_estimated_hours = models.IntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Study Plan: {self.career} ({self.skill_level}) - {self.user.email}"

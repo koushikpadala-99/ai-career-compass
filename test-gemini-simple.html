@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple Gemini Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/@google/generative-ai"></script>
+</head>
+<body>
+    <h1>Gemini API Test</h1>
+    <button onclick="testGemini()">Test Gemini API</button>
+    <pre id="output"></pre>
+
+    <script>
+        async function testGemini() {
+            const output = document.getElementById('output');
+            output.textContent = 'Testing...';
+
+            const apiKey = 'AIzaSyCRA30uwieZzwb0ziY5W6Mnc8wGJalVPII';
+            
+            try {
+                const genAI = new google.generativeai.GoogleGenerativeAI(apiKey);
+                const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+                
+                const result = await model.generateContent('Say hello in one word');
+                const response = await result.response;
+                
+                output.textContent = 'SUCCESS!\n\n' + response.text();
+            } catch (error) {
+                output.textContent = 'ERROR:\n\n' + error.message + '\n\n' + JSON.stringify(error, null, 2);
+            }
+        }
+    </script>
+</body>
+</html>

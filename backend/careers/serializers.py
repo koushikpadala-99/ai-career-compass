@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Career, CareerAnalysis, SavedCareer, Roadmap
+from .models import Career, CareerAnalysis, SavedCareer, Roadmap, StudyPlan
 
 class CareerSerializer(serializers.ModelSerializer):
     match_percentage = serializers.IntegerField(required=False)
@@ -31,3 +31,9 @@ class RoadmapSerializer(serializers.ModelSerializer):
     class Meta:
         model = Roadmap
         fields = ['id', 'career', 'milestones', 'created_at', 'updated_at']
+
+class StudyPlanSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StudyPlan
+        fields = ['id', 'career', 'skill_level', 'study_plan', 'total_estimated_hours', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']

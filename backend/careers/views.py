@@ -2,9 +2,9 @@ from rest_framework import generics, status, views
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.shortcuts import get_object_or_404
-from .models import Career, CareerAnalysis, SavedCareer, Roadmap
-from .serializers import (CareerSerializer, CareerAnalysisSerializer,
-                          SavedCareerSerializer, RoadmapSerializer)
+from .models import Career, CareerAnalysis, SavedCareer, Roadmap, StudyPlan
+from .serializers import (CareerSerializer, CareerAnalysisSerializer, 
+                          SavedCareerSerializer, RoadmapSerializer, StudyPlanSerializer)
 from .llm_service import LLMService
 from .career_matcher import CareerMatcher
 
@@ -112,3 +112,86 @@ class UserAnalysisHistoryView(generics.ListAPIView):
     
     def get_queryset(self):
         return CareerAnalysis.objects.filter(user=self.request.user)[:10]
+
+
+class GenerateStudyPlanView(views.APIView):
+    """Generate AI-powered study plan for a career"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        career = request.data.get('career')
+        skill_level = request.data.get('skill_level', 'beginner')
+        
+        if not career:
+            return Response({'error': 'Career is required'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        if skill_level not in ['beginner', 'intermediate', 'advanced']:
+            return Response({'error': 'Invalid skill level'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if study plan already exists for this career and skill level
+        existing_plan = StudyPlan.objects.filter(
+            user=request.user,
+            career=career,
+            skill_level=skill_level
+        ).first()
+        
+        if existing_plan:
+            return Response(StudyPlanSerializer(existing_plan).data)
+        
+        # Generate study plan using LLM
+        llm_service = LLMService()
+        study_plan_data = llm_service.generate_study_plan(career, skill_level)
+        
+        # Save to database
+        study_plan = StudyPlan.objects.create(
+            user=request.user,
+            career=career,
+            skill_level=skill_level,
+            study_plan=study_plan_data.get('study_plan', []),
+            total_estimated_hours=study_plan_data.get('total_estimated_hours')
+        )
+        
+        return Response(StudyPlanSerializer(study_plan).data, status=status.HTTP_201_CREATED)
+    
+    def get(self, request):
+        """Get user's study plans"""
+        plans = StudyPlan.objects.filter(user=request.user)
+        serializer = StudyPlanSerializer(plans, many=True)
+        return Response(serializer.data)
+
+
+class StudyPlanDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """Get, update, or delete a specific study plan"""
+    serializer_class = StudyPlanSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        return StudyPlan.objects.filter(user=self.request.user)
+
+
+class MatchCareersFromQuizView(views.APIView):
+    """Match careers based on quiz answers using LLM"""
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        quiz_answers = request.data.get('quiz_answers', {})
+        
+        if not quiz_answers:
+            return Response({'error': 'Quiz answers are required'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+        
+        # Use LLM service to match careers
+        llm_service = LLMService()
+        result = llm_service.match_careers_from_quiz(quiz_answers)
+        
+        if not result.get('success'):
+            return Response({'error': result.get('error', 'Failed to match careers')}, 
+                          status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        return Response({
+            'success': True,
+            'careers': result.get('careers', []),
+            'summary': result.get('summary', '')
+        })
