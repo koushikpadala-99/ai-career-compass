@@ -365,6 +365,64 @@ Provide a clear, concise answer based on the document content. If the answer is 
             print(f"Document Q&A error: {e}")
             return "I couldn't answer that question about the document. Please try again."
 
+    def generate_roadmap_by_title(self, career_title: str, level: str = 'beginner') -> Dict[str, Any]:
+        """
+        Generate winding-road roadmap steps for a career title and level.
+        Returns: {"career": str, "roadmap": [{"step_number": int, "title": str, "description": str}]}
+        """
+        prompt = f"""Generate 6 learning milestones for becoming a {career_title} at {level} level.
+Return ONLY valid JSON, no markdown:
+{{"career":"{career_title}","roadmap":[{{"step_number":1,"title":"Step Title","description":"Short description under 15 words"}},{{"step_number":2,"title":"Step Title","description":"Short description under 15 words"}},{{"step_number":3,"title":"Step Title","description":"Short description under 15 words"}},{{"step_number":4,"title":"Step Title","description":"Short description under 15 words"}},{{"step_number":5,"title":"Step Title","description":"Short description under 15 words"}},{{"step_number":6,"title":"Step Title","description":"Short description under 15 words"}}]}}
+Replace all titles and descriptions with real content for {career_title} at {level} level. Keep descriptions under 15 words each."""
+
+        try:
+            if self.provider == 'gemini':
+                response = self._call_gemini(prompt, temperature=0.7)
+            elif self.provider == 'openai':
+                response = self._call_openai(prompt, temperature=0.7)
+            elif self.provider == 'anthropic':
+                response = self._call_anthropic(prompt, temperature=0.7)
+            else:
+                raise Exception("No LLM provider configured")
+
+            response = response.strip()
+            # Strip markdown code fences if present
+            if response.startswith('```'):
+                response = response.split('```')[1]
+                if response.startswith('json'):
+                    response = response[4:]
+
+            start = response.find('{')
+            end = response.rfind('}') + 1
+            if start == -1 or end == 0:
+                raise ValueError("No JSON in response")
+
+            parsed = json.loads(response[start:end])
+
+            if not isinstance(parsed.get('roadmap'), list):
+                raise ValueError("Invalid roadmap structure")
+
+            parsed['roadmap'] = [
+                {
+                    'step_number': s.get('step_number', i + 1),
+                    'title': s.get('title', 'Step'),
+                    'description': s.get('description', '')
+                }
+                for i, s in enumerate(parsed['roadmap'])
+            ]
+            return parsed
+
+        except Exception as e:
+            print(f"generate_roadmap_by_title error: {e}")
+            # Fallback
+            return {
+                "career": career_title,
+                "roadmap": [
+                    {"step_number": i + 1, "title": f"Step {i + 1}", "description": f"Learn {career_title} fundamentals step {i + 1}"}
+                    for i in range(6)
+                ]
+            }
+
     def match_careers_from_quiz(self, quiz_answers: Dict[str, str]) -> Dict[str, Any]:
         """
         Match careers based on quiz answers using LLM

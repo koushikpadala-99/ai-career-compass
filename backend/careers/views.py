@@ -171,6 +171,25 @@ class StudyPlanDetailView(generics.RetrieveUpdateDestroyAPIView):
         return StudyPlan.objects.filter(user=self.request.user)
 
 
+class GenerateRoadmapByTitleView(views.APIView):
+    """Generate winding-road roadmap by career title and level"""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        career_title = request.data.get('career_title', '').strip()
+        level = request.data.get('level', 'beginner')
+
+        if not career_title:
+            return Response({'error': 'career_title is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if level not in ['beginner', 'intermediate', 'advanced']:
+            level = 'beginner'
+
+        llm_service = LLMService()
+        result = llm_service.generate_roadmap_by_title(career_title, level)
+        return Response(result)
+
+
 class MatchCareersFromQuizView(views.APIView):
     """Match careers based on quiz answers using LLM"""
     permission_classes = [IsAuthenticated]

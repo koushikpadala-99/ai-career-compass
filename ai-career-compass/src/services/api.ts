@@ -135,6 +135,15 @@ export const careerAPI = {
     return response.data;
   },
 
+  // Generate winding-road roadmap by career title and level
+  generateRoadmapByTitle: async (careerTitle: string, level: string = 'beginner') => {
+    const response = await api.post('/careers/roadmap/generate-by-title/', {
+      career_title: careerTitle,
+      level,
+    });
+    return response.data;
+  },
+
   // Get analysis history
   getAnalysisHistory: async () => {
     const response = await api.get('/careers/history/');
